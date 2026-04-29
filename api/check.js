@@ -4,7 +4,21 @@ import path from 'path';
 
 export default async function handler(req, res) {
     const WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
-    if (!WEBHOOK_URL) return res.status(500).json({ error: 'Missing WEBHOOK URL' });
+    if (!WEBHOOK_URL) return res.status(500).json({ error: 'Brak Webhooka w ustawieniach Vercel!' });
+
+    // Sprawdzamy czy użytkownik chce wysłać test (?test=true)
+    const isTest = req.query.test === 'true';
+
+    if (isTest) {
+        await fetch(WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                content: `\`[DEBUG]\` : Połączenie z Webhookiem działa poprawnie! 🚀`
+            })
+        });
+        return res.status(200).json({ message: 'Wysłano wiadomość testową na Discord!' });
+    }
 
     try {
         const listPath = path.join(process.cwd(), 'list.json');
@@ -13,7 +27,6 @@ export default async function handler(req, res) {
 
         for (const mod of mods) {
             try {
-                // Pobieramy dane bezpośrednio z linku podanego w JSON
                 const response = await fetch(mod.link);
                 const data = await response.json();
                 
@@ -25,14 +38,12 @@ export default async function handler(req, res) {
                 const datePublished = latest.date_published;
                 const projectLink = `https://modrinth.com/project/${mod.id}/version/${latest.id}`;
 
-                // Sprawdzanie ignorowanych wersji
                 const ignoredList = mod.ignored_versions ? mod.ignored_versions.split(',').map(v => v.trim()) : [];
                 if (ignoredList.includes(apiVersion)) {
                     results.push({ mod: mod.name, status: 'Ignored version', version: apiVersion });
                     continue;
                 }
 
-                // Sprawdzanie pamięci KV
                 const lastSent = await kv.get(`sent_id_${mod.id}`);
                 if (apiVersion === lastSent) {
                     results.push({ mod: mod.name, status: 'Up to date', version: apiVersion });
@@ -41,7 +52,6 @@ export default async function handler(req, res) {
 
                 const formattedDate = new Date(datePublished).toLocaleString('pl-PL', { timeZone: 'Europe/Warsaw' });
 
-                // Powiadomienie Discord
                 await fetch(WEBHOOK_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -50,7 +60,6 @@ export default async function handler(req, res) {
                     })
                 });
 
-                // Zapisanie do bazy
                 await kv.set(`sent_id_${mod.id}`, apiVersion);
                 results.push({ mod: mod.name, status: 'SENT', version: apiVersion });
 
